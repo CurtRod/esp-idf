@@ -17,6 +17,13 @@ This file get's pulled into assembly sources. Therefore, some includes need to b
 #include <assert.h>         //For configASSERT()
 #endif /* def __ASSEMBLER__ */
 
+#ifdef CONFIG_FREERTOS_SMP
+
+// Pull in the SMP configuration
+#include "freertos/FreeRTOSConfig_smp.h"
+
+#else // CONFIG_FREERTOS_SMP
+
 // The arch-specific FreeRTOSConfig_arch.h in port/<arch>/include.
 #include "freertos/FreeRTOSConfig_arch.h"
 
@@ -93,7 +100,7 @@ This file get's pulled into assembly sources. Therefore, some includes need to b
 #if configUSE_TICKLESS_IDLE
 #define configEXPECTED_IDLE_TIME_BEFORE_SLEEP           CONFIG_FREERTOS_IDLE_TIME_BEFORE_SLEEP
 #endif //configUSE_TICKLESS_IDLE
-#define configCPU_CLOCK_HZ                              (CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ * 1000000)
+#define configCPU_CLOCK_HZ                              (CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ * 1000000)
 #define configTICK_RATE_HZ                              CONFIG_FREERTOS_HZ
 #define configMAX_PRIORITIES                            ( 25 )  //This has impact on speed of search for highest priority
 #define configMINIMAL_STACK_SIZE                        ( 768 + configSTACK_OVERHEAD_TOTAL )
@@ -140,8 +147,8 @@ This file get's pulled into assembly sources. Therefore, some includes need to b
 
 // ------------------------ Hooks --------------------------
 
-#define configUSE_IDLE_HOOK                             1
-#define configUSE_TICK_HOOK                             1
+#define configUSE_IDLE_HOOK                             CONFIG_FREERTOS_USE_IDLE_HOOK
+#define configUSE_TICK_HOOK                             CONFIG_FREERTOS_USE_TICK_HOOK
 #if CONFIG_FREERTOS_CHECK_STACKOVERFLOW_NONE
 #define configCHECK_FOR_STACK_OVERFLOW                  0
 #elif CONFIG_FREERTOS_CHECK_STACKOVERFLOW_PTRVAL
@@ -239,12 +246,7 @@ Note: Include trace macros here and not above as trace macros are dependent on s
 #ifndef configIDLE_TASK_STACK_SIZE
 #define configIDLE_TASK_STACK_SIZE                      CONFIG_FREERTOS_IDLE_TASK_STACKSIZE
 #endif
-#if CONFIG_FREERTOS_ENABLE_TASK_SNAPSHOT
-#define configENABLE_TASK_SNAPSHOT                      1
-#endif
-#ifndef configENABLE_TASK_SNAPSHOT
-#define configENABLE_TASK_SNAPSHOT                      0
-#endif
+
 #if CONFIG_FREERTOS_CHECK_MUTEX_GIVEN_BY_OWNER
 #define configCHECK_MUTEX_GIVEN_BY_OWNER                1
 #else
@@ -262,5 +264,7 @@ extern void vPortCleanUpTCB ( void *pxTCB );
 
 // backward compatibility for 4.4
 #define xTaskRemoveFromUnorderedEventList vTaskRemoveFromUnorderedEventList
+
+#endif // CONFIG_FREERTOS_SMP
 
 #endif /* FREERTOS_CONFIG_H */

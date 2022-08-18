@@ -7,4 +7,5 @@ idf_component_register(SRC_DIRS integration/event_groups
                                 performance
                                 port
                        PRIV_INCLUDE_DIRS .
-                       PRIV_REQUIRES cmock test_utils esp_system driver)
+                       PRIV_REQUIRES cmock test_utils esp_system driver esp_timer)
+target_compile_options(${COMPONENT_LIB} PRIVATE "-Wno-format")

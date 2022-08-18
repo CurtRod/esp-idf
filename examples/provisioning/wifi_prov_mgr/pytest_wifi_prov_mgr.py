@@ -6,8 +6,15 @@
 from __future__ import print_function
 
 import logging
+import os
+import sys
 
-import esp_prov
+try:
+    import esp_prov
+except ImportError:
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..', 'tools'))
+    import esp_prov
+
 import pytest
 from pytest_embedded import Dut
 
@@ -18,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 esp_prov.config_throw_except = True
 
 
-@pytest.mark.supported_targets
+@pytest.mark.esp32
 @pytest.mark.generic
 @pytest.mark.xfail(reason='Runner unable to connect to target over Bluetooth', run=False)
 def test_examples_wifi_prov_mgr(dut: Dut) -> None:

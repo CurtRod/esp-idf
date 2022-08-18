@@ -15,7 +15,8 @@ set(srcs "src/nvs_api.cpp"
 
 idf_component_register(SRCS "${srcs}"
                     REQUIRES "spi_flash"
-                    INCLUDE_DIRS "include")
+                    INCLUDE_DIRS "include"
+                    PRIV_INCLUDE_DIRS "private_include")
 
 # If we use the linux target, we need to redirect the crc functions to the linux
 if(${target} STREQUAL "linux")
@@ -32,3 +33,5 @@ if(CONFIG_NVS_ENCRYPTION)
     target_sources(${COMPONENT_LIB} PRIVATE "src/nvs_encrypted_partition.cpp")
     target_link_libraries(${COMPONENT_LIB} PRIVATE idf::mbedtls)
 endif()
+
+target_compile_options(${COMPONENT_LIB} PRIVATE "-Wno-format")

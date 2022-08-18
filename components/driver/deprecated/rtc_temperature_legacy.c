@@ -11,9 +11,10 @@
 #include "esp_types.h"
 #include "esp_log.h"
 #include "esp_check.h"
+#include "freertos/FreeRTOS.h"
 #include "soc/rtc_cntl_reg.h"
 #include "esp_private/regi2c_ctrl.h"
-#include "regi2c_saradc.h"
+#include "soc/regi2c_saradc.h"
 #include "esp_log.h"
 #include "esp_efuse_rtc_calib.h"
 #include "hal/temperature_sensor_ll.h"
@@ -93,6 +94,7 @@ esp_err_t temp_sensor_start(void)
         ESP_LOGE(TAG, "Is already running or not be configured");
         err = ESP_ERR_INVALID_STATE;
     }
+    regi2c_saradc_enable();
     periph_module_enable(PERIPH_TEMPSENSOR_MODULE);
     temperature_sensor_ll_enable(true);
     temperature_sensor_ll_clk_enable(true);
@@ -103,6 +105,7 @@ esp_err_t temp_sensor_start(void)
 
 esp_err_t temp_sensor_stop(void)
 {
+    regi2c_saradc_disable();
     temperature_sensor_ll_enable(false);
     tsens_hw_state = TSENS_HW_STATE_CONFIGURED;
     return ESP_OK;
@@ -142,7 +145,7 @@ esp_err_t temp_sensor_read_celsius(float *celsius)
     uint32_t tsens_out = 0;
     temp_sensor_get_config(&tsens);
     temp_sensor_read_raw(&tsens_out);
-    ESP_LOGV(TAG, "tsens_out %d", tsens_out);
+    ESP_LOGV(TAG, "tsens_out %"PRIu32, tsens_out);
     const tsens_dac_offset_t *dac = &dac_offset[tsens.dac_offset];
     *celsius = parse_temp_sensor_raw_value(tsens_out, dac->offset);
     if (*celsius < dac->range_min || *celsius > dac->range_max) {
@@ -161,7 +164,7 @@ static void check_legacy_temp_sensor_driver_conflict(void)
     // This function was declared as weak here. temperature_sensor driver has one implementation.
     // So if temperature_sensor driver is not linked in, then `temperature_sensor_install()` should be NULL at runtime.
     extern __attribute__((weak)) esp_err_t temperature_sensor_install(const void *tsens_config, void **ret_tsens);
-    if (temperature_sensor_install != NULL) {
+    if ((void *)temperature_sensor_install != NULL) {
         ESP_EARLY_LOGE(TAG, "CONFLICT! driver_ng is not allowed to be used with the legacy driver");
         abort();
     }

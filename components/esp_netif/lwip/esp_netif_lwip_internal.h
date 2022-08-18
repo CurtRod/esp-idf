@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -12,31 +12,7 @@
 #include "lwip/netif.h"
 #include "dhcpserver/dhcpserver.h"
 
-#ifdef CONFIG_ESP_NETIF_TCPIP_LWIP
-
-struct esp_netif_netstack_lwip_vanilla_config {
-    err_t (*init_fn)(struct netif*);
-    void (*input_fn)(void *netif, void *buffer, size_t len, void *eb);
-};
-
-struct esp_netif_netstack_lwip_ppp_config {
-    void (*input_fn)(void *netif, void *buffer, size_t len, void *eb);
-    esp_netif_ppp_config_t ppp_events;
-};
-
-struct esp_netif_netstack_lwip_slip_config {
-    err_t (*init_fn)(struct netif*);
-    void (*input_fn)(void *netif, void *buffer, size_t len, void *eb);
-    esp_netif_slip_config_t slip_config;
-};
-
-// LWIP netif specific network stack configuration
-struct esp_netif_netstack_config {
-    union {
-        struct esp_netif_netstack_lwip_vanilla_config lwip;
-        struct esp_netif_netstack_lwip_ppp_config lwip_ppp;
-    };
-};
+#if defined(CONFIG_ESP_NETIF_TCPIP_LWIP)
 
 struct esp_netif_api_msg_s;
 
@@ -126,6 +102,13 @@ struct esp_netif_obj {
     char * if_key;
     char * if_desc;
     int route_prio;
+
+#if CONFIG_ESP_NETIF_BRIDGE_EN
+    // bridge configuration
+    uint16_t max_fdb_dyn_entries;
+    uint16_t max_fdb_sta_entries;
+    uint8_t max_ports;
+#endif // CONFIG_ESP_NETIF_BRIDGE_EN
 };
 
 #endif /* CONFIG_ESP_NETIF_TCPIP_LWIP */

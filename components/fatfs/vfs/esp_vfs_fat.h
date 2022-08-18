@@ -85,6 +85,17 @@ typedef struct {
      * sector size.
      */
     size_t allocation_unit_size;
+    /**
+     * Enables real ff_disk_status function implementation for SD cards
+     * (ff_sdmmc_status). Possibly slows down IO performance.
+     *
+     * Try to enable if you need to handle situations when SD cards
+     * are not unmounted properly before physical removal
+     * or you are experiencing issues with SD cards.
+     *
+     * Doesn't do anything for other memory storage media.
+     */
+    bool disk_status_check_enable;
 } esp_vfs_fat_mount_config_t;
 
 // Compatibility definition
@@ -116,8 +127,6 @@ typedef esp_vfs_fat_mount_config_t esp_vfs_fat_sdmmc_mount_config_t;
  * @param slot_config   Pointer to structure with slot configuration.
  *                      For SDMMC peripheral, pass a pointer to sdmmc_slot_config_t
  *                      structure initialized using SDMMC_SLOT_CONFIG_DEFAULT.
- *                      (Deprecated) For SPI peripheral, pass a pointer to sdspi_slot_config_t
- *                      structure initialized using SDSPI_SLOT_CONFIG_DEFAULT().
  * @param mount_config  pointer to structure with extra parameters for mounting FATFS
  * @param[out] out_card  if not NULL, pointer to the card information structure will be returned via this argument
  * @return
@@ -293,6 +302,19 @@ esp_err_t esp_vfs_fat_rawflash_mount(const char* base_path,
     __attribute__((deprecated("esp_vfs_fat_rawflash_mount is deprecated, please use esp_vfs_fat_spiflash_mount_ro instead")));
 esp_err_t esp_vfs_fat_rawflash_unmount(const char* base_path, const char* partition_label)
     __attribute__((deprecated("esp_vfs_fat_rawflash_unmount is deprecated, please use esp_vfs_fat_spiflash_unmount_ro instead")));
+
+/**
+ * @brief  Get information for FATFS partition
+ *
+ * @param base_path  Path where partition should be registered (e.g. "/spiflash")
+ * @param[out] out_total_bytes  Size of the file system
+ * @param[out] out_free_bytes   Current used bytes in the file system
+ * @return
+ *      - ESP_OK on success
+ *      - ESP_ERR_INVALID_STATE if partition not found
+ *      - ESP_FAIL if another FRESULT error (saved in errno)
+ */
+esp_err_t esp_vfs_fat_info(const char* base_path, uint64_t* out_total_bytes, uint64_t* out_free_bytes);
 
 #ifdef __cplusplus
 }

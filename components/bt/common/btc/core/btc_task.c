@@ -39,6 +39,12 @@
 #if (BTC_SPP_INCLUDED == TRUE)
 #include "btc_spp.h"
 #endif /* #if (BTC_SPP_INCLUDED == TRUE) */
+#if (BTC_L2CAP_INCLUDED == TRUE)
+#include "btc_l2cap.h"
+#endif /* #if (BTC_L2CAP_INCLUDED == TRUE) */
+#if (BTC_SDP_INCLUDED == TRUE)
+#include "btc_sdp.h"
+#endif /* #if (BTC_SDP_INCLUDED == TRUE) */
 #if BTC_HF_INCLUDED
 #include "btc_hf_ag.h"
 #endif/* #if BTC_HF_INCLUDED */
@@ -52,6 +58,10 @@
 #include "btc_hh.h"
 #endif /* BTC_HH_INCLUDED */
 #endif /* #if CLASSIC_BT_INCLUDED */
+#endif
+
+#if (BLE_INCLUDED == TRUE)
+#include "btc_gap_ble.h"
 #endif
 
 #if CONFIG_BLE_MESH
@@ -69,6 +79,9 @@
 #define BTC_TASK_STACK_SIZE             (BT_BTC_TASK_STACK_SIZE + BT_TASK_EXTRA_STACK_SIZE)	//by menuconfig
 #define BTC_TASK_NAME                   "BTC_TASK"
 #define BTC_TASK_PRIO                   (BT_TASK_MAX_PRIORITIES - 6)
+#define BTC_TASK_WORKQUEUE_NUM          (2)
+#define BTC_TASK_WORKQUEUE0_LEN         (0)
+#define BTC_TASK_WORKQUEUE1_LEN         (5)
 
 osi_thread_t *btc_thread;
 
@@ -112,6 +125,12 @@ static const btc_func_t profile_tab[BTC_PID_NUM] = {
 #if (BTC_SPP_INCLUDED == TRUE)
     [BTC_PID_SPP]         = {btc_spp_call_handler,        btc_spp_cb_handler      },
 #endif /* #if (BTC_SPP_INCLUDED == TRUE) */
+#if (BTC_L2CAP_INCLUDED == TRUE)
+    [BTC_PID_L2CAP]       = {btc_l2cap_call_handler,      btc_l2cap_cb_handler    },
+#endif /* #if (BTC_L2CAP_INCLUDED == TRUE) */
+#if (BTC_SDP_INCLUDED == TRUE)
+    [BTC_PID_SDP]       = {btc_sdp_call_handler,          btc_sdp_cb_handler      },
+#endif /* #if (BTC_SDP_INCLUDED == TRUE) */
 #if BTC_HF_INCLUDED
     [BTC_PID_HF]   = {btc_hf_call_handler,  btc_hf_cb_handler},
 #endif  /* #if BTC_HF_INCLUDED */
@@ -402,7 +421,9 @@ error_exit:;
 
 bt_status_t btc_init(void)
 {
-    btc_thread = osi_thread_create(BTC_TASK_NAME, BTC_TASK_STACK_SIZE, BTC_TASK_PRIO, BTC_TASK_PINNED_TO_CORE, 2);
+    const size_t workqueue_len[] = {BTC_TASK_WORKQUEUE0_LEN, BTC_TASK_WORKQUEUE1_LEN};
+    btc_thread = osi_thread_create(BTC_TASK_NAME, BTC_TASK_STACK_SIZE, BTC_TASK_PRIO, BTC_TASK_PINNED_TO_CORE,
+                                   BTC_TASK_WORKQUEUE_NUM, workqueue_len);
     if (btc_thread == NULL) {
         return BT_STATUS_NOMEM;
     }
@@ -415,6 +436,7 @@ bt_status_t btc_init(void)
 
 #if (BLE_INCLUDED == TRUE)
     btc_gap_callback_init();
+    btc_gap_ble_init();
 #endif  ///BLE_INCLUDED == TRUE
 
 #if SCAN_QUEUE_CONGEST_CHECK
@@ -432,7 +454,9 @@ void btc_deinit(void)
 
     osi_thread_free(btc_thread);
     btc_thread = NULL;
-
+#if (BLE_INCLUDED == TRUE)
+    btc_gap_ble_deinit();
+#endif  ///BLE_INCLUDED == TRUE
 #if SCAN_QUEUE_CONGEST_CHECK
     btc_adv_list_deinit();
 #endif
@@ -450,4 +474,9 @@ bool btc_check_queue_is_congest(void)
 int get_btc_work_queue_size(void)
 {
     return osi_thread_queue_wait_size(btc_thread, 0);
+}
+
+osi_thread_t *btc_get_current_thread(void)
+{
+    return btc_thread;
 }

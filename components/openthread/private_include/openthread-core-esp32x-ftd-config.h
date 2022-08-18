@@ -77,7 +77,6 @@
  */
 #define OPENTHREAD_CONFIG_COAP_API_ENABLE 1
 
-
 /**
  * @def OPENTHREAD_CONFIG_PLATFORM_NETIF_ENABLE
  *
@@ -151,6 +150,16 @@
 #endif
 
 /**
+ * @def OPENTHREAD_CONFIG_BORDER_ROUTING_NAT64_ENABLE
+ *
+ * Define to 1 to enable Border Routing NAT64 support.
+ *
+ */
+#ifndef OPENTHREAD_CONFIG_BORDER_ROUTING_NAT64_ENABLE
+#define OPENTHREAD_CONFIG_BORDER_ROUTING_NAT64_ENABLE 1
+#endif
+
+/**
  * @def OPENTHREAD_CONFIG_ECDSA_ENABLE
  *
  * Define to 1 to enable ECDSA support.
@@ -198,6 +207,17 @@
  */
 #ifndef OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE
 #define OPENTHREAD_CONFIG_BACKBONE_ROUTER_ENABLE 1
+#endif
+
+/**
+ * @def OPENTHREAD_SPINEL_CONFIG_RCP_RESTORATION_MAX_COUNT
+ *
+ * Defines the max count of RCP failures allowed to be recovered.
+ * 0 means to disable RCP failure recovering.
+ *
+ */
+#ifndef OPENTHREAD_SPINEL_CONFIG_RCP_RESTORATION_MAX_COUNT
+#define OPENTHREAD_SPINEL_CONFIG_RCP_RESTORATION_MAX_COUNT 1
 #endif
 
 #endif // CONFIG_OPENTHREAD_BORDER_ROUTER

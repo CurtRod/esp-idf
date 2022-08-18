@@ -23,16 +23,15 @@
 #include "esp_system.h"
 #include "esp_log.h"
 #include "esp_heap_caps_init.h"
-#include "esp_spi_flash.h"
+#include "spi_flash_mmap.h"
 #include "esp_flash_internal.h"
 #include "esp_newlib.h"
-#include "esp_vfs_dev.h"
 #include "esp_timer.h"
 #include "esp_efuse.h"
 #include "esp_flash_encrypt.h"
 #include "esp_secure_boot.h"
-#include "esp_sleep.h"
 #include "esp_xt_wdt.h"
+#include "esp_cpu.h"
 
 #if __has_include("esp_ota_ops.h")
 #include "esp_ota_ops.h"
@@ -41,14 +40,12 @@
 
 /***********************************************/
 // Headers for other components init functions
+#if CONFIG_SW_COEXIST_ENABLE || CONFIG_EXTERNAL_COEX_ENABLE
 #include "esp_coexist_internal.h"
+#endif
 
 #if CONFIG_ESP_COREDUMP_ENABLE
 #include "esp_core_dump.h"
-#endif
-
-#if CONFIG_APPTRACE_ENABLE
-#include "esp_app_trace.h"
 #endif
 
 #include "esp_private/dbg_stubs.h"
@@ -58,21 +55,21 @@
 #include "esp_private/pm_impl.h"
 #endif
 
-#include "esp_pthread.h"
+#if CONFIG_VFS_SUPPORT_IO
+#include "esp_vfs_dev.h"
 #include "esp_vfs_console.h"
-#include "esp_private/esp_clk.h"
+#endif
 
+#include "esp_pthread.h"
+#include "esp_private/esp_clk.h"
+#include "esp_private/spi_flash_os.h"
 #include "esp_private/brownout.h"
 
 #include "esp_rom_sys.h"
 
-// [refactor-todo] make this file completely target-independent
-#if CONFIG_IDF_TARGET_ESP32
-#include "esp32/spiram.h"
-#elif CONFIG_IDF_TARGET_ESP32S2
-#include "esp32s2/spiram.h"
-#elif CONFIG_IDF_TARGET_ESP32S3
-#include "esp32s3/spiram.h"
+#if CONFIG_SPIRAM
+#include "esp_psram.h"
+#include "esp_private/esp_psram_extram.h"
 #endif
 /***********************************************/
 
@@ -83,6 +80,19 @@
 #if !(SOC_CPU_CORES_NUM > 1) && !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
     #error "System has been configured to run on multiple cores, but target SoC only has a single core."
 #endif
+
+// Set efuse ROM_LOG_MODE on first boot
+//
+// For CONFIG_BOOT_ROM_LOG_ALWAYS_ON (default) or undefined (ESP32), leave
+// ROM_LOG_MODE undefined (no need to call this function during startup)
+#if CONFIG_BOOT_ROM_LOG_ALWAYS_OFF
+#define ROM_LOG_MODE ESP_EFUSE_ROM_LOG_ALWAYS_OFF
+#elif CONFIG_BOOT_ROM_LOG_ON_GPIO_LOW
+#define ROM_LOG_MODE ESP_EFUSE_ROM_LOG_ON_GPIO_LOW
+#elif CONFIG_BOOT_ROM_LOG_ON_GPIO_HIGH
+#define ROM_LOG_MODE ESP_EFUSE_ROM_LOG_ON_GPIO_HIGH
+#endif
+
 
 uint64_t g_startup_time = 0;
 
@@ -178,17 +188,25 @@ static void do_global_ctors(void)
 
 #if __riscv
     for (p = &__init_priority_array_start; p < &__init_priority_array_end; ++p) {
-        ESP_EARLY_LOGD(TAG, "calling init function: %p", *p);
+        ESP_LOGD(TAG, "calling init function: %p", *p);
         (*p)();
     }
 #endif
 
     for (p = &__init_array_end - 1; p >= &__init_array_start; --p) {
-        ESP_EARLY_LOGD(TAG, "calling init function: %p", *p);
+        ESP_LOGD(TAG, "calling init function: %p", *p);
         (*p)();
     }
 }
 
+/**
+ * @brief Call component init functions defined using ESP_SYSTEM_INIT_Fn macros.
+ * The esp_system_init_fn_t structures describing these functions are collected into
+ * an array [_esp_system_init_fn_array_start, _esp_system_init_fn_array_end) by the
+ * linker. The functions are sorted by their priority value.
+ * The sequence of the init function calls (sorted by priority) is documented in
+ * system_init_fn.txt file.
+ */
 static void do_system_init_fn(void)
 {
     extern esp_system_init_fn_t _esp_system_init_fn_array_start;
@@ -196,14 +214,20 @@ static void do_system_init_fn(void)
 
     esp_system_init_fn_t *p;
 
-    for (p = &_esp_system_init_fn_array_end - 1; p >= &_esp_system_init_fn_array_start; --p) {
-        if (p->cores & BIT(cpu_hal_get_core_id())) {
-            (*(p->fn))();
+    int core_id = esp_cpu_get_core_id();
+    for (p = &_esp_system_init_fn_array_start; p < &_esp_system_init_fn_array_end; ++p) {
+        if (p->cores & BIT(core_id)) {
+            ESP_LOGD(TAG, "calling init function: %p on core: %d", p->fn, core_id);
+            esp_err_t err = (*(p->fn))();
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "init function %p has failed (0x%x), aborting", p->fn, err);
+                abort();
+            }
         }
     }
 
 #if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
-    s_system_inited[cpu_hal_get_core_id()] = true;
+    s_system_inited[core_id] = true;
 #endif
 }
 
@@ -215,6 +239,9 @@ static void  esp_startup_start_app_other_cores_default(void)
     }
 }
 
+/* This function has to be in IRAM, as while it is running on CPU1, CPU0 may do some flash operations
+ * (e.g. initialize the core dump), which means that cache will be disabled.
+ */
 static void IRAM_ATTR start_cpu_other_cores_default(void)
 {
     do_system_init_fn();
@@ -246,9 +273,9 @@ static void do_core_init(void)
     esp_timer_early_init();
     esp_newlib_init();
 
-    if (g_spiram_ok) {
 #if CONFIG_SPIRAM_BOOT_INIT && (CONFIG_SPIRAM_USE_CAPS_ALLOC || CONFIG_SPIRAM_USE_MALLOC)
-        esp_err_t r=esp_spiram_add_to_heapalloc();
+    if (esp_psram_is_initialized()) {
+        esp_err_t r=esp_psram_extram_add_to_heap_allocator();
         if (r != ESP_OK) {
             ESP_EARLY_LOGE(TAG, "External RAM could not be added to heap!");
             abort();
@@ -256,8 +283,8 @@ static void do_core_init(void)
 #if CONFIG_SPIRAM_USE_MALLOC
         heap_caps_malloc_extmem_enable(CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL);
 #endif
-#endif
     }
+#endif
 
 #if CONFIG_ESP_BROWNOUT_DET
     // [refactor-todo] leads to call chain rtc_is_register (driver) -> esp_intr_alloc (esp32/esp32s2) ->
@@ -288,14 +315,17 @@ static void do_core_init(void)
     err = esp_pthread_init();
     assert(err == ESP_OK && "Failed to init pthread module!");
 
-    spi_flash_init();
-    /* init default OS-aware flash access critical section */
-    spi_flash_guard_set(&g_flash_guard_default_ops);
+#if CONFIG_SPI_FLASH_ROM_IMPL
+    spi_flash_rom_impl_init();
+#endif
 
     esp_flash_app_init();
     esp_err_t flash_ret = esp_flash_init_default_chip();
     assert(flash_ret == ESP_OK);
     (void)flash_ret;
+#if CONFIG_SPI_FLASH_BROWNOUT_RESET
+    spi_flash_needs_reset_check();
+#endif // CONFIG_SPI_FLASH_BROWNOUT_RESET
 
 #ifdef CONFIG_EFUSE_VIRTUAL
     ESP_LOGW(TAG, "eFuse virtual mode is enabled. If Secure boot or Flash encryption is enabled then it does not provide any security. FOR TESTING ONLY!");
@@ -328,6 +358,10 @@ static void do_core_init(void)
 #if defined(CONFIG_SECURE_BOOT) || defined(CONFIG_SECURE_SIGNED_ON_UPDATE_NO_SECURE_BOOT)
     // Note: in some configs this may read flash, so placed after flash init
     esp_secure_boot_init_checks();
+#endif
+
+#ifdef ROM_LOG_MODE
+    esp_efuse_set_rom_log_scheme(ROM_LOG_MODE);
 #endif
 
 #if CONFIG_ESP_XT_WDT
@@ -424,26 +458,8 @@ static void start_cpu0_default(void)
     while (1);
 }
 
-IRAM_ATTR ESP_SYSTEM_INIT_FN(init_components0, BIT(0))
+ESP_SYSTEM_INIT_FN(init_components0, BIT(0), 200)
 {
-    esp_timer_init();
-
-#if CONFIG_ESP_SLEEP_GPIO_RESET_WORKAROUND && !CONFIG_PM_SLP_DISABLE_GPIO
-    // Configure to isolate (disable the Input/Output/Pullup/Pulldown
-    // function of the pin) all GPIO pins in sleep state
-    esp_sleep_config_gpio_isolate();
-    // Enable automatic switching of GPIO configuration
-    esp_sleep_enable_gpio_switch(true);
-#endif
-
-#if CONFIG_APPTRACE_ENABLE
-    esp_err_t err = esp_apptrace_init();
-    assert(err == ESP_OK && "Failed to init apptrace module on PRO CPU!");
-#endif
-#if CONFIG_APPTRACE_SV_ENABLE
-    SEGGER_SYSVIEW_Conf();
-#endif
-
 #if CONFIG_ESP_DEBUG_STUBS_ENABLE
     esp_dbg_stubs_init();
 #endif
@@ -470,4 +486,6 @@ IRAM_ATTR ESP_SYSTEM_INIT_FN(init_components0, BIT(0))
     _Unwind_SetNoFunctionContextInstall(1);
     _Unwind_SetEnableExceptionFdeSorting(0);
 #endif // CONFIG_COMPILER_CXX_EXCEPTIONS
+
+    return ESP_OK;
 }

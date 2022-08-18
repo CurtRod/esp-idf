@@ -43,7 +43,7 @@ uint32_t periph_rtc_dig_clk8m_get_freq(void)
 {
 #if CONFIG_IDF_TARGET_ESP32H2
     /* Workaround: H2 doesn't have 8MD256 clk, so calibration cannot be done, we just return its theoretic frequency */
-    return RTC_FAST_CLK_FREQ_APPROX;
+    return SOC_CLK_RC_FAST_FREQ_APPROX;
 #else
     return s_rtc_clk_freq * 256;
 #endif
@@ -121,4 +121,4 @@ esp_err_t periph_rtc_apll_freq_set(uint32_t expt_freq, uint32_t *real_freq)
 
     return ESP_OK;
 }
-#endif // SOC_I2S_SUPPORTS_APLL
+#endif // SOC_CLK_APLL_SUPPORTED

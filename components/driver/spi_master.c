@@ -111,7 +111,7 @@ We have two bits to control the interrupt:
 */
 
 #include <string.h>
-#include "driver/spi_common_internal.h"
+#include "esp_private/spi_common_internal.h"
 #include "driver/spi_master.h"
 
 #include "esp_log.h"
@@ -454,11 +454,6 @@ esp_err_t spi_bus_remove_device(spi_device_handle_t handle)
     handle->host->device[handle->id] = NULL;
     free(handle);
     return ESP_OK;
-}
-
-int spi_cal_clock(int fapb, int hz, int duty_cycle, uint32_t *reg_o)
-{
-    return spi_ll_master_cal_clock(fapb, hz, duty_cycle, reg_o);
 }
 
 int spi_get_actual_clock(int fapb, int hz, int duty_cycle)

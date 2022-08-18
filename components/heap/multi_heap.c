@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2015-2021 Espressif Systems (Shanghai) CO LTD
+ * SPDX-FileCopyrightText: 2015-2022 Espressif Systems (Shanghai) CO LTD
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -11,9 +11,13 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <sys/cdefs.h>
-#include "heap_tlsf.h"
-#include <multi_heap.h>
+#include "multi_heap.h"
 #include "multi_heap_internal.h"
+
+#if !CONFIG_HEAP_TLSF_USE_ROM_IMPL
+#include "tlsf.h"
+#include "tlsf_block_functions.h"
+#endif
 
 /* Note: Keep platform-specific parts in this header, this source
    file should depend on libc only */
@@ -22,7 +26,7 @@
 /* Defines compile-time configuration macros */
 #include "multi_heap_config.h"
 
-#ifndef MULTI_HEAP_POISONING
+#if (!defined MULTI_HEAP_POISONING) && (!defined CONFIG_HEAP_TLSF_USE_ROM_IMPL)
 /* if no heap poisoning, public API aliases directly to these implementations */
 void *multi_heap_malloc(multi_heap_handle_t heap, size_t size)
     __attribute__((alias("multi_heap_malloc_impl")));
@@ -74,8 +78,32 @@ typedef struct multi_heap_info {
     size_t free_bytes;
     size_t minimum_free_bytes;
     size_t pool_size;
-    tlsf_t heap_data;
+    void* heap_data;
 } heap_t;
+
+#ifdef CONFIG_HEAP_TLSF_USE_ROM_IMPL
+
+void _multi_heap_lock(void *lock)
+{
+    MULTI_HEAP_LOCK(lock);
+}
+
+void _multi_heap_unlock(void *lock)
+{
+    MULTI_HEAP_UNLOCK(lock);
+}
+
+multi_heap_os_funcs_t multi_heap_os_funcs = {
+    .lock = _multi_heap_lock,
+    .unlock = _multi_heap_unlock,
+};
+
+void multi_heap_in_rom_init(void)
+{
+    multi_heap_os_funcs_init(&multi_heap_os_funcs);
+}
+
+#else //#ifndef CONFIG_HEAP_TLSF_USE_ROM_IMPL
 
 /* Return true if this block is free. */
 static inline bool is_free(const block_header_t *block)
@@ -201,7 +229,6 @@ void *multi_heap_malloc_impl(multi_heap_handle_t heap, size_t size)
 
 void multi_heap_free_impl(multi_heap_handle_t heap, void *p)
 {
-
     if (heap == NULL || p == NULL) {
         return;
     }
@@ -380,3 +407,4 @@ void multi_heap_get_info_impl(multi_heap_handle_t heap, multi_heap_info_t *info)
     }
     multi_heap_internal_unlock(heap);
 }
+#endif

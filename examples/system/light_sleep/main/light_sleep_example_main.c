@@ -14,6 +14,7 @@
 #include "driver/uart.h"
 #include "esp_sleep.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "light_sleep_example.h"
 
 static void light_sleep_task(void *args)
@@ -49,6 +50,11 @@ static void light_sleep_task(void *args)
                  * Otherwise the chip may fall sleep again before running uart task */
                 vTaskDelay(1);
                 break;
+#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
+            case ESP_SLEEP_WAKEUP_TOUCHPAD:
+                wakeup_reason = "touch";
+                break;
+#endif
             default:
                 wakeup_reason = "other";
                 break;
@@ -71,6 +77,10 @@ void app_main(void)
     example_register_timer_wakeup();
     /* Enable wakeup from light sleep by uart */
     example_register_uart_wakeup();
+#if CONFIG_IDF_TARGET_ESP32S2 || CONFIG_IDF_TARGET_ESP32S3
+    /* Enable wakeup from light sleep by touch element */
+    example_register_touch_wakeup();
+#endif
 
     xTaskCreate(light_sleep_task, "light_sleep_task", 4096, NULL, 6, NULL);
 }

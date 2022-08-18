@@ -73,8 +73,6 @@ extern "C" {
 #define FLASH_MMU_TABLE ((volatile uint32_t*) DR_REG_MMU_TABLE)
 #define FLASH_MMU_TABLE_SIZE (ICACHE_MMU_SIZE/sizeof(uint32_t))
 
-#define MMU_TABLE_INVALID_VAL 0x4000
-#define FLASH_MMU_TABLE_INVALID_VAL DPORT_MMU_TABLE_INVALID_VAL
 /**
  * MMU entry valid bit mask for mapping value. For an entry:
  * valid bit + value bits
@@ -82,20 +80,18 @@ extern "C" {
  */
 #define MMU_VALID_VAL_MASK 0x3fff
 /**
- * Helper macro to make a MMU entry invalid
+ * Max MMU available paddr page num.
+ * `MMU_MAX_PADDR_PAGE_NUM * CONFIG_MMU_PAGE_SIZE` means the max paddr address supported by the MMU. e.g.:
+ * 16384 * 64KB, means MMU can support 1GB paddr at most
  */
-#define INVALID_PHY_PAGE 0xffff
-/**
- * Max MMU entry num.
- * `MMU_MAX_ENTRY_NUM * MMU_PAGE_SIZE` means the max paddr and vaddr region supported by the MMU. e.g.:
- * 16384 * 64KB, means MMU can map 1GB at most
- */
-#define MMU_MAX_ENTRY_NUM    16384
+#define MMU_MAX_PADDR_PAGE_NUM    16384
 /**
  * This is the mask used for mapping. e.g.:
  * 0x4200_0000 & MMU_VADDR_MASK
  */
 #define MMU_VADDR_MASK  0x1FFFFFF
+//MMU entry num
+#define MMU_ENTRY_NUM   512
 
 #define CACHE_ICACHE_LOW_SHIFT         0
 #define CACHE_ICACHE_HIGH_SHIFT        2

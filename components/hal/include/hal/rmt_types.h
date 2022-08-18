@@ -7,6 +7,7 @@
 #pragma once
 
 #include "soc/clk_tree_defs.h"
+#include "soc/soc_caps.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,7 +17,11 @@ extern "C" {
  * @brief RMT group clock source
  * @note User should select the clock source based on the power and resolution requirement
  */
+#if SOC_RMT_SUPPORTED
 typedef soc_periph_rmt_clk_src_t rmt_clock_source_t;
+#else
+typedef int rmt_clock_source_t;
+#endif
 
 /**
  * @brief The layout of RMT symbol stored in memory, which is decided by the hardware design
@@ -28,7 +33,7 @@ typedef union {
         unsigned int duration1 : 15; /*!< Duration of level1 */
         unsigned int level1 : 1;     /*!< Level of the second part */
     };
-    unsigned int val; /*!< Equivelent unsigned value for the RMT symbol */
+    unsigned int val; /*!< Equivalent unsigned value for the RMT symbol */
 } rmt_symbol_word_t;
 
 #ifdef __cplusplus

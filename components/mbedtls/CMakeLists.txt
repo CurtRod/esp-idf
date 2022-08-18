@@ -17,9 +17,16 @@ endif()
 
 idf_component_register(SRCS "${mbedtls_srcs}"
     INCLUDE_DIRS "${mbedtls_include_dirs}"
-    REQUIRES lwip
     PRIV_REQUIRES "${priv_requires}"
     )
+
+# Determine the type of mbedtls component library
+if(mbedtls_srcs STREQUAL "")
+    # For no sources in component library we must use "INTERFACE"
+    set(linkage_type INTERFACE)
+else()
+    set(linkage_type PUBLIC)
+endif()
 
 
 if(CONFIG_MBEDTLS_CERTIFICATE_BUNDLE)
@@ -103,8 +110,7 @@ endif()
 
 set(mbedtls_targets mbedtls mbedcrypto mbedx509)
 
-set(mbedtls_target_sources "${COMPONENT_DIR}/port/mbedtls_debug.c"
-                           "${COMPONENT_DIR}/port/net_sockets.c")
+set(mbedtls_target_sources "${COMPONENT_DIR}/port/mbedtls_debug.c")
 
 if(CONFIG_MBEDTLS_DYNAMIC_BUFFER)
 set(mbedtls_target_sources ${mbedtls_target_sources}
@@ -112,6 +118,15 @@ set(mbedtls_target_sources ${mbedtls_target_sources}
                            "${COMPONENT_DIR}/port/dynamic/esp_ssl_cli.c"
                            "${COMPONENT_DIR}/port/dynamic/esp_ssl_srv.c"
                            "${COMPONENT_DIR}/port/dynamic/esp_ssl_tls.c")
+endif()
+
+# net_sockets.c should only be compiled if BSD socket functions are available.
+# Do this by checking if lwip component is included into the build.
+idf_build_get_property(build_components BUILD_COMPONENTS)
+if(lwip IN_LIST build_components)
+    list(APPEND mbedtls_target_sources "${COMPONENT_DIR}/port/net_sockets.c")
+    idf_component_get_property(lwip_lib lwip COMPONENT_LIB)
+    target_link_libraries(${COMPONENT_LIB} ${linkage_type} ${lwip_lib})
 endif()
 
 # Add port files to mbedtls targets
@@ -122,8 +137,10 @@ target_sources(mbedtls PRIVATE ${mbedtls_target_sources})
 if(CONFIG_SOC_SHA_SUPPORTED)
     if(CONFIG_SOC_SHA_SUPPORT_DMA)
         set(SHA_PERIPHERAL_TYPE "dma")
-    else()
+    elseif(CONFIG_SOC_SHA_SUPPORT_PARALLEL_ENG)
         set(SHA_PERIPHERAL_TYPE "parallel_engine")
+    else()
+        set(SHA_PERIPHERAL_TYPE "block")
     endif()
 endif()
 
@@ -148,7 +165,6 @@ if(SHA_PERIPHERAL_TYPE STREQUAL "dma")
 endif()
 
 if(AES_PERIPHERAL_TYPE STREQUAL "dma")
-
     if(NOT CONFIG_SOC_AES_GDMA)
         set(AES_DMA_SRCS "${COMPONENT_DIR}/port/aes/dma/esp_aes_crypto_dma_impl.c")
     else()
@@ -159,6 +175,7 @@ if(AES_PERIPHERAL_TYPE STREQUAL "dma")
     target_include_directories(mbedcrypto PRIVATE "${COMPONENT_DIR}/port/aes/dma/include")
     target_sources(mbedcrypto PRIVATE  "${AES_DMA_SRCS}")
 endif()
+
 
 target_sources(mbedcrypto PRIVATE "${COMPONENT_DIR}/port/esp_hardware.c"
                                   "${COMPONENT_DIR}/port/esp_mem.c"
@@ -237,30 +254,19 @@ if(CONFIG_MBEDTLS_DYNAMIC_BUFFER)
 endif()
 
 set_property(TARGET mbedcrypto APPEND PROPERTY LINK_INTERFACE_LIBRARIES mbedtls)
-set_property(TARGET mbedcrypto APPEND PROPERTY LINK_LIBRARIES idf::driver idf::${target})
-set_property(TARGET mbedcrypto APPEND PROPERTY INTERFACE_LINK_LIBRARIES idf::driver idf::${target})
 
-# Link mbedtls libraries to component library
-if(mbedtls_srcs STREQUAL "")
-    # For no sources in component library we must use "INTERFACE"
-    set(linkage_type INTERFACE)
-else()
-    set(linkage_type PUBLIC)
+if(CONFIG_PM_ENABLE)
+    target_link_libraries(mbedcrypto PRIVATE idf::esp_pm)
 endif()
 
 target_link_libraries(${COMPONENT_LIB} ${linkage_type} ${mbedtls_targets})
 
 if(CONFIG_ESP_TLS_USE_DS_PERIPHERAL)
-    # Link target (e.g. esp32s2) library to component library
-    idf_component_get_property(target_lib ${target} COMPONENT_LIB)
-    set_property(TARGET mbedcrypto APPEND PROPERTY INTERFACE_LINK_LIBRARIES $<LINK_ONLY:${target_lib}>)
     # The linker seems to be unable to resolve all the dependencies without increasing this
     set_property(TARGET mbedcrypto APPEND PROPERTY LINK_INTERFACE_MULTIPLICITY 6)
-    target_link_libraries(${COMPONENT_LIB} ${linkage_type} ${target_lib})
 endif()
 
 # Link esp-cryptoauthlib to mbedtls
 if(CONFIG_ATCA_MBEDTLS_ECDSA)
-    idf_component_get_property(cryptoauthlib esp-cryptoauthlib COMPONENT_LIB)
-    target_link_libraries(${COMPONENT_LIB} ${linkage_type} ${cryptoauthlib})
+    idf_component_optional_requires(PRIVATE espressif__esp-cryptoauthlib esp-cryptoauthlib)
 endif()

@@ -1,6 +1,6 @@
 {
     "name": "framework-espidf",
     "description": "ESP-IDF",
-    "version": "4.4.1",
+    "version": "4.4.2",
     "url": "https://github.com/CurtRod/esp-idf"
 }
